@@ -25,7 +25,7 @@ $(PRODUCT): $(OBJECTS)
 
 .PHONY: smoke_test
 smoke_test: $(PRODUCT)
-	PYINTER_MODULE=test.smoke tclsh test/smoke.tcl
+	$(MAKE) -C test/smoke
 
 .PHONY: fmt
 fmt:

@@ -28,3 +28,13 @@ util::split(const std::string *string, char delimiter) {
 
     return returnValue;
 }
+
+std::string join(std::vector< std::string > *array, char delimiter) {
+    std::stringstream ss;
+
+    for (auto &string : *array) {
+        ss << string << delimiter;
+    }
+
+    return ss.str();
+}

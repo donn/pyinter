@@ -1,2 +1,2 @@
-load ./pyinter.so
+load ../../pyinter.so
 puts [hello_name world]
