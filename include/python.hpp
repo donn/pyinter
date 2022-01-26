@@ -7,7 +7,6 @@
 namespace boost {
     namespace python {
         void traceback();
-        bool callable(object obj);
     }
 }
 
