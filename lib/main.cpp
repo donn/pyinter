@@ -1,7 +1,6 @@
+#include "python.hpp"
 #include "util.hpp"
 
-#include <boost/format.hpp>
-#include <boost/python.hpp>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -12,19 +11,7 @@
 #include <unordered_map>
 #include <vector>
 
-using boost::format;
-
 std::vector< std::shared_ptr< boost::python::object > > objectStore;
-
-namespace boost {
-    namespace python {
-        auto traceback = PyErr_Print;
-        bool callable(object obj) {
-            return (bool)PyCallable_Check(obj.ptr());
-        }
-    }
-}
-
 
 extern "C" int RunPythonCommand(
     ClientData cdata,
@@ -68,17 +55,6 @@ extern "C" int RunPythonCommand(
     }
 }
 
-auto initScriptFmt = format(R"python3(
-import sys
-from inspect import getmembers, isfunction
-
-sys.path.append("%s")
-
-import %s as importable
-
-members = getmembers(importable)
-)python3");
-
 extern "C" int Pyinter_Import(
     ClientData cdata,
     Tcl_Interp *interp,
@@ -92,30 +68,29 @@ extern "C" int Pyinter_Import(
             return TCL_ERROR;
         }
 
-        auto cwd = util::env("PWD");
-        auto importablePythonModule = std::string(objv[1]->bytes);
+        auto searchPathsOptional = util::env("PYINTER_SEARCH_PATHS");
+        auto searchPathsUnwrapped =
+            searchPathsOptional.value_or(util::env("PWD").value());
+        auto searchPaths = util::split(&searchPathsUnwrapped, ':');
 
-        auto main = import("__main__");
-        auto global = main.attr("__dict__");
+        list searchPathsPy = extract< list >(import("sys").attr("path"));
+        for (auto &path : searchPaths) {
+            str pathPy = str(path.c_str());
+            searchPathsPy.append(pathPy);
+        }
 
-        auto run = (initScriptFmt % cwd % importablePythonModule).str();
+        auto importName = std::string(objv[1]->bytes);
 
-        exec(run.c_str(), global);
-
-        auto topModule = global["importable"];
-
-        auto ns = Tcl_CreateNamespace(
-            interp,
-            importablePythonModule.c_str(),
-            NULL,
-            NULL);
+        auto ns = Tcl_CreateNamespace(interp, importName.c_str(), NULL, NULL);
         Tcl_Export(interp, ns, "*", 0);
 
-        list members = extract< list >(global["members"]);
+        object importable = import(importName.c_str());
+        object getmembers = import("inspect").attr("getmembers");
+        list members = extract< list >(getmembers(importable));
         for (ssize_t i = 0; i < len(members); i += 1) {
             tuple member = extract< tuple >(members[i]);
             const char *name = extract< const char * >(member[0]);
-            std::string namespaced = importablePythonModule + "::" + name;
+            std::string namespaced = importName + "::" + name;
 
             object objectRef = extract< object >(member[1]);
             auto pointer = std::make_shared< object >(objectRef);

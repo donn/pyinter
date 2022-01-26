@@ -1,16 +1,13 @@
 #include "util.hpp"
 
-#include <boost/format.hpp>
 #include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 
-std::string util::env(std::string key) {
+std::optional< std::string > util::env(std::string key) {
     auto value = getenv(key.c_str());
     if (value == nullptr) {
-        std::string errorMessage =
-            (boost::format("Environment variable %s not found.") % key).str();
-        throw std::runtime_error(errorMessage.c_str());
+        return std::nullopt;
     }
     return std::string(value);
 }
