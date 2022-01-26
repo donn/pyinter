@@ -1,4 +1,3 @@
-#include "python.hpp"
 #include "util.hpp"
 
 #include <boost/format.hpp>
@@ -6,15 +5,26 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <tcl.h>
+#include <unordered_map>
 #include <vector>
 
 using boost::format;
-boost::python::object moduleDictRef;
 
-auto traceback = PyErr_Print;
+std::vector< std::shared_ptr< boost::python::object > > objectStore;
+
+namespace boost {
+    namespace python {
+        auto traceback = PyErr_Print;
+        bool callable(object obj) {
+            return (bool)PyCallable_Check(obj.ptr());
+        }
+    }
+}
+
 
 extern "C" int RunPythonCommand(
     ClientData cdata,
@@ -24,25 +34,32 @@ extern "C" int RunPythonCommand(
     using namespace boost::python;
 
     try {
-        object fn = moduleDictRef[const_cast< const char * >(objv[0]->bytes)];
+        object fn = *static_cast< object * >(cdata);
 
-        list arguments;
-        for (int i = 1; i < objc; i += 1) {
-            auto tclArg = objv[i];
-            str arg = const_cast< const char * >(tclArg->bytes);
-            arguments.append(arg);
+        if (callable(fn)) {
+            list arguments;
+            for (int i = 1; i < objc; i += 1) {
+                auto tclArg = objv[i];
+                str arg = const_cast< const char * >(tclArg->bytes);
+                arguments.append(arg);
+            }
+            tuple args = tuple(arguments);
+
+            object result = fn(*args);
+
+            auto returnValue = std::string("");
+            if (!result.is_none()) {
+                returnValue = extract< const char * >(result);
+            }
+
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(returnValue.c_str(), -1));
+            return TCL_OK;
+
+        } else {
+            auto returnValue = extract< const char * >(str(fn));
+            Tcl_SetObjResult(interp, Tcl_NewStringObj(returnValue, -1));
+            return TCL_OK;
         }
-        tuple args = tuple(arguments);
-
-        object result = fn(*args);
-
-        std::string returnValue = "";
-        if (!result.is_none()) {
-            returnValue = extract< const char * >(result);
-        }
-
-        Tcl_SetObjResult(interp, Tcl_NewStringObj(returnValue.c_str(), -1));
-        return TCL_OK;
 
     } catch (boost::python::error_already_set &e) {
         handle_exception();
@@ -59,17 +76,24 @@ sys.path.append("%s")
 
 import %s as importable
 
-function_list = getmembers(importable, isfunction)
+members = getmembers(importable)
 )python3");
 
-// Called when Tcl loads the extension
-extern "C" int DLLEXPORT Pyinter_Init(Tcl_Interp *interp) {
+extern "C" int Pyinter_Import(
+    ClientData cdata,
+    Tcl_Interp *interp,
+    int objc,
+    Tcl_Obj *const objv[]) {
     using namespace boost::python;
     try {
-        Py_Initialize();
+        if (objc != 2) {
+            std::cerr << "Syntax: " << objv[0]->bytes
+                      << " <name of python module>" << std::endl;
+            return TCL_ERROR;
+        }
 
-        auto importablePythonModule = util::env("PYINTER_MODULE");
         auto cwd = util::env("PWD");
+        auto importablePythonModule = std::string(objv[1]->bytes);
 
         auto main = import("__main__");
         auto global = main.attr("__dict__");
@@ -79,30 +103,35 @@ extern "C" int DLLEXPORT Pyinter_Init(Tcl_Interp *interp) {
         exec(run.c_str(), global);
 
         auto topModule = global["importable"];
-        auto functionListRef = global["function_list"];
 
-        moduleDictRef = topModule.attr("__dict__");
+        auto ns = Tcl_CreateNamespace(
+            interp,
+            importablePythonModule.c_str(),
+            NULL,
+            NULL);
+        Tcl_Export(interp, ns, "*", 0);
 
-        auto name =
-            extract< const char * >(moduleDictRef["__TCL_PACKAGE_NAME__"]);
-        auto version =
-            extract< const char * >(moduleDictRef["__TCL_PACKAGE_VERSION__"]);
+        list members = extract< list >(global["members"]);
+        for (ssize_t i = 0; i < len(members); i += 1) {
+            tuple member = extract< tuple >(members[i]);
+            const char *name = extract< const char * >(member[0]);
+            std::string namespaced = importablePythonModule + "::" + name;
 
-        if (Tcl_InitStubs(interp, TCL_VERSION, 0) == NULL) {
-            return TCL_ERROR;
+            object objectRef = extract< object >(member[1]);
+            auto pointer = std::make_shared< object >(objectRef);
+
+            objectStore.push_back(pointer);
+
+            Tcl_CreateObjCommand(
+                interp,
+                namespaced.c_str(),
+                RunPythonCommand,
+                pointer.get(),
+                NULL);
         }
 
-        if (Tcl_PkgProvide(interp, name, version) == TCL_ERROR) {
-            return TCL_ERROR;
-        }
+        return TCL_OK;
 
-        list functions = extract< list >(functionListRef);
-
-        for (ssize_t i = 0; i < len(functions); i += 1) {
-            tuple function = extract< tuple >(functions[i]);
-            auto name = extract< const char * >(function[0]);
-            Tcl_CreateObjCommand(interp, name, RunPythonCommand, NULL, NULL);
-        }
     } catch (boost::python::error_already_set &e) {
         handle_exception();
         traceback();
@@ -111,6 +140,34 @@ extern "C" int DLLEXPORT Pyinter_Init(Tcl_Interp *interp) {
         std::cerr << e.what() << std::endl;
         return TCL_ERROR;
     }
+}
 
+// Called when Tcl loads the extension
+extern "C" int DLLEXPORT Pyinter_Init(Tcl_Interp *interp) {
+    using namespace boost::python;
+    try {
+        Py_Initialize();
+        if (Tcl_InitStubs(interp, TCL_VERSION, NULL) == NULL) {
+            return TCL_ERROR;
+        }
+
+        if (Tcl_PkgProvide(interp, "pyinter", "0.1") == TCL_ERROR) {
+            return TCL_ERROR;
+        }
+
+        Tcl_CreateObjCommand(
+            interp,
+            "pyinter_import",
+            Pyinter_Import,
+            NULL,
+            NULL);
+    } catch (boost::python::error_already_set &e) {
+        handle_exception();
+        traceback();
+        return TCL_ERROR;
+    } catch (std::runtime_error &e) {
+        std::cerr << e.what() << std::endl;
+        return TCL_ERROR;
+    }
     return TCL_OK;
 }
