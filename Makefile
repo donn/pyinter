@@ -28,7 +28,7 @@ $(PRODUCT): $(OBJECTS)
 
 $(TEST_TARGETS): test-% : $(PRODUCT)
 	@echo ">>> Running test '$*'..."
-	cd test/$* && tclsh ./test.tcl
+	@cd test/$* && tclsh ./test.tcl && echo "Success!" || echo "Failed..."
 
 test: $(TEST_TARGETS)
 

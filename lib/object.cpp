@@ -8,15 +8,6 @@
 using namespace boost::python;
 using bpo = boost::python::object;
 
-inline const char *describe(bpo &obj) {
-    return extract< const char * >(str(obj));
-}
-
-inline const char *pyname(bpo &obj) {
-    bpo nameAttribute = obj.attr("__name__");
-    return extract< const char * >(nameAttribute);
-}
-
 pyint::signature::signature(bpo &target) {
     auto inspect = import("inspect");
 
@@ -62,7 +53,11 @@ bool pyint::object::callable() const {
 }
 
 void pyint::object::processCallable() {
-    dict dictionary = extract< dict >(attr("__dict__"));
+    if (!boost::python::hasattr(*this, "__dict__")) {
+        return;
+    }
+    
+    dict dictionary = dict(attr("__dict__"));
     bpo resultRef = dictionary.get("__pyinter_annotation__");
 
     if (resultRef.is_none()) {
