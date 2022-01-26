@@ -24,8 +24,6 @@ extern "C" int RunPythonCommand(
     try {
         auto fn = *static_cast< pyint::object * >(cdata);
 
-        std::cout << fn.callable() << std::endl;
-
         if (!fn.callable()) {
             auto returnValue = extract< const char * >(str(fn));
             Tcl_SetObjResult(interp, Tcl_NewStringObj(returnValue, -1));
@@ -64,60 +62,61 @@ extern "C" int Pyinter_Import(
     int objc,
     Tcl_Obj *const objv[]) {
     using namespace boost::python;
-    // try {
-    if (objc != 2) {
-        std::cerr << "Syntax: " << objv[0]->bytes << " <name of python module>"
-                  << std::endl;
+
+    try {
+        if (objc != 2) {
+            std::cerr << "Syntax: " << objv[0]->bytes
+                      << " <name of python module>" << std::endl;
+            return TCL_ERROR;
+        }
+
+        auto searchPathsOptional = util::env("PYINTER_SEARCH_PATHS");
+        auto searchPathsUnwrapped =
+            searchPathsOptional.value_or(util::env("PWD").value());
+        auto searchPaths = util::split(&searchPathsUnwrapped, ':');
+
+        list searchPathsPy = extract< list >(import("sys").attr("path"));
+        for (auto &path : searchPaths) {
+            str pathPy = str(path.c_str());
+            searchPathsPy.append(pathPy);
+        }
+
+        auto importName = std::string(objv[1]->bytes);
+
+        auto ns = Tcl_CreateNamespace(interp, importName.c_str(), NULL, NULL);
+        Tcl_Export(interp, ns, "*", 0);
+
+        object importable = import(importName.c_str());
+        object getmembers = import("inspect").attr("getmembers");
+        list members = extract< list >(getmembers(importable));
+        for (ssize_t i = 0; i < len(members); i += 1) {
+            tuple member = extract< tuple >(members[i]);
+            const char *name = extract< const char * >(member[0]);
+            std::string namespaced = importName + "::" + name;
+
+            object objectRef = extract< object >(member[1]);
+            auto pointer = std::make_shared< pyint::object >(objectRef);
+
+            objectStore.push_back(pointer);
+
+            Tcl_CreateObjCommand(
+                interp,
+                namespaced.c_str(),
+                RunPythonCommand,
+                pointer.get(),
+                NULL);
+        }
+
+        return TCL_OK;
+
+    } catch (boost::python::error_already_set &e) {
+        handle_exception();
+        traceback();
+        return TCL_ERROR;
+    } catch (std::runtime_error &e) {
+        std::cerr << e.what() << std::endl;
         return TCL_ERROR;
     }
-
-    auto searchPathsOptional = util::env("PYINTER_SEARCH_PATHS");
-    auto searchPathsUnwrapped =
-        searchPathsOptional.value_or(util::env("PWD").value());
-    auto searchPaths = util::split(&searchPathsUnwrapped, ':');
-
-    list searchPathsPy = extract< list >(import("sys").attr("path"));
-    for (auto &path : searchPaths) {
-        str pathPy = str(path.c_str());
-        searchPathsPy.append(pathPy);
-    }
-
-    auto importName = std::string(objv[1]->bytes);
-
-    auto ns = Tcl_CreateNamespace(interp, importName.c_str(), NULL, NULL);
-    Tcl_Export(interp, ns, "*", 0);
-
-    object importable = import(importName.c_str());
-    object getmembers = import("inspect").attr("getmembers");
-    list members = extract< list >(getmembers(importable));
-    for (ssize_t i = 0; i < len(members); i += 1) {
-        tuple member = extract< tuple >(members[i]);
-        const char *name = extract< const char * >(member[0]);
-        std::string namespaced = importName + "::" + name;
-
-        object objectRef = extract< object >(member[1]);
-        auto pointer = std::make_shared< pyint::object >(objectRef);
-
-        objectStore.push_back(pointer);
-
-        Tcl_CreateObjCommand(
-            interp,
-            namespaced.c_str(),
-            RunPythonCommand,
-            pointer.get(),
-            NULL);
-    }
-
-    return TCL_OK;
-
-    // } catch (boost::python::error_already_set &e) {
-    //     handle_exception();
-    //     traceback();
-    //     return TCL_ERROR;
-    // } catch (std::runtime_error &e) {
-    //     std::cerr << e.what() << std::endl;
-    //     return TCL_ERROR;
-    // }
 }
 
 // Called when Tcl loads the extension

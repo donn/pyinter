@@ -9,7 +9,7 @@ SOURCES = $(shell find $(SOURCE_FOLDER)/ | grep "\.cpp$$")
 HEADERS = $(shell find $(HEADER_FOLDER)/ | grep "\.hpp$$")
 OBJECTS = $(addprefix $(BUILD_FOLDER)/,$(patsubst %.cpp,%.o,$(SOURCES)))
 
-CXX_FLAGS = $(shell python3-config --cflags) -fPIC -g -I$(HEADER_FOLDER) -std=c++17
+CXX_FLAGS = $(shell python3-config --cflags) -fPIC -g -I$(HEADER_FOLDER) -std=c++11
 LD_FLAGS = $(shell python3-config --ldflags) -lpython3 -lboost_python3 -ltclstub8.6
 
 PRODUCT = pyinter.so
@@ -19,7 +19,7 @@ TEST_TARGETS = $(addprefix test-,$(TESTS))
 
 all: $(PRODUCT)
 
-$(OBJECTS): $(BUILD_FOLDER)/%.o:%.cpp $(SOURCES) $(HEADERS) Makefile
+$(OBJECTS): $(BUILD_FOLDER)/%.o : %.cpp $(HEADERS)
 	@mkdir -p $(@D)
 	$(CXX) -c -o $@ $(CXX_FLAGS) $<
 

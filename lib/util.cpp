@@ -4,10 +4,10 @@
 #include <sstream>
 #include <stdexcept>
 
-std::optional< std::string > util::env(std::string key) {
+boost::optional< std::string > util::env(std::string key) {
     auto value = getenv(key.c_str());
     if (value == nullptr) {
-        return std::nullopt;
+        return boost::none;
     }
     return std::string(value);
 }
