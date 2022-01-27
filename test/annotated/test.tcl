@@ -1,7 +1,7 @@
 load ../../pyinter.so
 
-pyinter_import test
-namespace import test::*
+pyinter_import module
+namespace import module::*
 
 set result [math -a 4 -b 2 -add]
 

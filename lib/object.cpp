@@ -1,10 +1,25 @@
+// Copyright 2022 Mohamed Gaber
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #include "object.hpp"
 
 #include "python.hpp"
 
 #include <iostream>
-#include <sstream>
 #include <queue>
+#include <sstream>
 
 using namespace boost::python;
 using bpo = boost::python::object;
@@ -55,7 +70,7 @@ bool pyint::object::callable() const {
 
 bool pyint::object::commandLineCallable() const {
     // Yes, this is how boost unwraps optionals. Leave me alone.
-    if (signature) {
+    if (fnSignature) {
         return true;
     }
     return false;
@@ -78,7 +93,7 @@ void pyint::object::processCallable() {
         return;
     }
 
-    signature = pyint::signature(*this);
+    fnSignature = pyint::signature(*this);
 }
 
 std::string pyint::object::call(std::vector< std::string > &stringArguments) {
@@ -98,15 +113,15 @@ std::string pyint::object::call(std::vector< std::string > &stringArguments) {
 }
 
 std::string pyint::object::cli(std::vector< std::string > &rawArguments) {
-    std::deque<std::string> arguments(std::deque<std::string>(rawArguments.begin(), rawArguments.end()));
+    std::deque< std::string > arguments(
+        std::deque< std::string >(rawArguments.begin(), rawArguments.end()));
 
     list argList;
     dict kwargs;
 
-    bpo pybool = eval("bool");
     bpo pytrue = eval("True");
 
-    auto& parameters = signature.value().parameters();
+    auto &parameters = fnSignature.value().parameters();
     while (!arguments.empty()) {
         auto argument = arguments.front();
         arguments.pop_front();
@@ -124,7 +139,7 @@ std::string pyint::object::cli(std::vector< std::string > &rawArguments) {
 
             auto parameterType = parameterTypeOptional.value();
 
-            if (parameterType == pybool) {
+            if (std::string(pyname(parameterType)) == std::string("bool")) {
                 kwargs[key.c_str()] = pytrue;
             } else {
                 auto value = arguments.front();

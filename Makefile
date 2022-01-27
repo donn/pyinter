@@ -9,8 +9,9 @@ SOURCES = $(shell find $(SOURCE_FOLDER)/ | grep "\.cpp$$")
 HEADERS = $(shell find $(HEADER_FOLDER)/ | grep "\.hpp$$")
 OBJECTS = $(addprefix $(BUILD_FOLDER)/,$(patsubst %.cpp,%.o,$(SOURCES)))
 
-CXX_FLAGS = $(shell python3-config --cflags) -fPIC -g -I$(HEADER_FOLDER) -std=c++11
-LD_FLAGS = $(shell python3-config --ldflags) -lpython3 -lboost_python3 -ltclstub8.6
+CXX_FLAGS += $(shell python3-config --cflags) -fPIC -g -I /usr/include/boost169 -I$(HEADER_FOLDER) -std=c++11 -Wpedantic
+# LD_FLAGS += $(shell python3-config --ldflags) -lpython3 -L /lib64/boost169 -lboost_python36 -ltclstub8.5
+LD_FLAGS += $(shell python3-config --ldflags) -lpython3 -lboost_python3 -ltclstub8.6
 
 PRODUCT = pyinter.so
 
