@@ -30,23 +30,17 @@ extern "C" int RunPythonCommand(
             return TCL_OK;
         }
 
-        list arguments;
+        std::vector< std::string > stringArguments;
         for (int i = 1; i < objc; i += 1) {
             auto tclArg = objv[i];
-            str arg = const_cast< const char * >(tclArg->bytes);
-            arguments.append(arg);
+            auto name = const_cast< const char * >(tclArg->bytes);
+            stringArguments.push_back(name);
         }
 
-        tuple args = tuple(arguments);
-
-        object result = fn(*args);
-
-        auto returnValue = std::string("");
-        if (!result.is_none()) {
-            returnValue = extract< const char * >(result);
-        }
+        std::string returnValue = fn.commandLineCallable() ? fn.cli(stringArguments) : fn.call(stringArguments);
 
         Tcl_SetObjResult(interp, Tcl_NewStringObj(returnValue.c_str(), -1));
+
         return TCL_OK;
 
     } catch (boost::python::error_already_set &e) {
@@ -89,6 +83,7 @@ extern "C" int Pyinter_Import(
         object importable = import(importName.c_str());
         object getmembers = import("inspect").attr("getmembers");
         list members = extract< list >(getmembers(importable));
+
         for (ssize_t i = 0; i < len(members); i += 1) {
             tuple member = extract< tuple >(members[i]);
             const char *name = extract< const char * >(member[0]);
@@ -138,7 +133,9 @@ extern "C" int DLLEXPORT Pyinter_Init(Tcl_Interp *interp) {
             Pyinter_Import,
             NULL,
             NULL);
+
         return TCL_OK;
+
     } catch (boost::python::error_already_set &e) {
         handle_exception();
         traceback();

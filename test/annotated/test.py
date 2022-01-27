@@ -4,5 +4,5 @@ def pyinter(fn):
 
 
 @pyinter
-def add(a: int, b: int) -> int:
-    return a + b
+def math(a: int, b: int, add: bool = False) -> int:
+    return a + b if add else a - b

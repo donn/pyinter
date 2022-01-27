@@ -13,6 +13,7 @@ namespace pyint {
             boost::optional< boost::python::object > _type;
             boost::optional< boost::python::object > _defaultValue;
         public:
+            parameter() {}
             parameter(
                 std::string name,
                 boost::optional< boost::python::object > type,
@@ -31,7 +32,7 @@ namespace pyint {
     class signature {
         private:
             boost::optional< boost::python::object > _returnType;
-            std::vector< parameter > _parameters;
+            std::map< std::string, parameter > _parameters;
         public:
             signature() {}
             signature(boost::python::object &target);
@@ -39,7 +40,7 @@ namespace pyint {
             boost::optional< boost::python::object > returnType() const {
                 return _returnType;
             }
-            const std::vector< parameter > &parameters() const {
+            std::map< std::string, parameter > &parameters() {
                 return _parameters;
             }
     };
@@ -47,6 +48,7 @@ namespace pyint {
     class object : public boost::python::object {
         private:
             void processCallable();
+            boost::optional< signature > signature;
         public:
             // Constructs None
             object() : boost::python::object() {}
@@ -66,6 +68,10 @@ namespace pyint {
                 : boost::python::object(x) {}
 
             bool callable() const;
+            bool commandLineCallable() const;
+
+            std::string call(std::vector< std::string > &stringArguments);
+            std::string cli(std::vector< std::string > &rawArguments);
     };
 }
 #endif
