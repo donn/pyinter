@@ -1,6 +1,6 @@
-load ../../pyinter.so
+load [lindex $argv 0]
 
-puts $::env(PWD)
+set ::env(PYINTER_SEARCH_PATHS) [file dirname [file normalize [info script]]]
 
 pyinter_import module
 namespace import module::*
