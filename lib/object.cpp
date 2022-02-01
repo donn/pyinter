@@ -62,6 +62,16 @@ pyint::signature::signature(bpo &target) {
 
         _parameters[name] = pyint::parameter(name, type, defaultValue);
     }
+
+    auto getdoc = inspect.attr("getdoc");
+    auto pydoc = getdoc(target);
+
+    if (pydoc.is_none()) {
+        _documentation = "No documentation found for this function.";
+    } else {
+        auto documentation = describe(pydoc);
+        _documentation = documentation;
+    }
 }
 
 bool pyint::object::callable() const {
@@ -122,31 +132,70 @@ std::string pyint::object::cli(std::vector< std::string > &rawArguments) {
     bpo pytrue = eval("True");
 
     auto &parameters = fnSignature.value().parameters();
+
+    auto pop = [&]() {
+        if (arguments.size()) {
+            auto retval = arguments.front();
+            arguments.pop_front();
+            return boost::optional<std::string>(retval);
+
+        }
+        return boost::optional<std::string>();
+    };
+
+    auto popValue = [&](std::string& key) {
+        auto value = pop();
+        if (value) {
+            return value.value();
+        }
+        std::stringstream ss;
+
+        ss << "raise ValueError('Non-boolean keyword argument \"" << key << "\" missing value.')" << std::endl;
+
+        exec(ss.str().c_str());
+
+        return std::string("The last exec should raise an exception and so this line should never be reached.");
+    };
+
     while (!arguments.empty()) {
-        auto argument = arguments.front();
-        arguments.pop_front();
+        auto argument = pop().value();
 
         if (argument[0] != '-') {
             argList.append(str(argument.c_str()));
+            continue;
+        }
+
+        auto key = argument.substr(1);
+        
+        auto parameterIterator = parameters.find(key);
+
+        // Check if parameter not found
+        if (parameterIterator == parameters.end()) {
+            // If the parameter is help and it's not found, just print the documentation.
+            if (key == "help") {
+                std::cerr << fnSignature.value().documentation() << std::endl;
+                return std::string("");
+            }
+
+            // Let Python handle telling the user that the kwarg is not found.
+            auto value = popValue(key);
+            kwargs[key.c_str()] = str(value.c_str());
+            continue;
+        }
+
+        auto& parameter = *parameterIterator;
+        auto parameterTypeOptional = parameter.second.type();
+        if (!parameterTypeOptional) {
+            kwargs[key.c_str()] = str(argument.c_str());
+        }
+
+        auto parameterType = parameterTypeOptional.value();
+
+        if (std::string(pyname(parameterType)) == std::string("bool")) {
+            kwargs[key.c_str()] = pytrue;
         } else {
-            auto key = argument.substr(1);
-            auto parameter = parameters[key];
-
-            auto parameterTypeOptional = parameter.type();
-            if (!parameterTypeOptional) {
-                kwargs[key.c_str()] = str(argument.c_str());
-            }
-
-            auto parameterType = parameterTypeOptional.value();
-
-            if (std::string(pyname(parameterType)) == std::string("bool")) {
-                kwargs[key.c_str()] = pytrue;
-            } else {
-                auto value = arguments.front();
-                arguments.pop_front();
-
-                kwargs[key.c_str()] = parameterType(str(value.c_str()));
-            }
+            auto value = popValue(key);
+            kwargs[key.c_str()] = parameterType(str(value.c_str()));
         }
     }
 

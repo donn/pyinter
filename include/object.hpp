@@ -49,6 +49,8 @@ namespace pyint {
         private:
             boost::optional< boost::python::object > _returnType;
             std::map< std::string, parameter > _parameters;
+
+            std::string _documentation;
         public:
             signature() {}
             signature(boost::python::object &target);
@@ -58,6 +60,9 @@ namespace pyint {
             }
             std::map< std::string, parameter > &parameters() {
                 return _parameters;
+            }
+            std::string documentation() {
+                return _documentation;
             }
     };
 
